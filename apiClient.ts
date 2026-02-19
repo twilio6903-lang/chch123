@@ -65,10 +65,12 @@ export const apiClient = {
 
   /**
    * Получение ссылки на оплату.
-   * Исправлен домен на yookassa.ru и добавлено форматирование параметров для предотвращения 404.
+   * Если Edge Function не развернута, используется прямой редирект.
+   * Используем yoomoney.ru как более надежный домен для "контрактных" ссылок (он автоматически перенаправит в ЮKassa).
    */
   async getPaymentLink(orderId: string, amount: number) {
     const SHOP_ID = '1271098';
+    const formattedSum = amount.toFixed(2);
     
     // Формируем чистый базовый URL для возврата
     const base = window.location.origin + window.location.pathname;
@@ -76,7 +78,7 @@ export const apiClient = {
     const returnUrl = `${cleanBase}#/order-success?orderId=${orderId}`;
     
     try {
-      // Пытаемся вызвать Edge Function (рекомендуемый способ)
+      // 1. Попытка через Edge Function (если она есть)
       const { data, error } = await supabase.functions.invoke('yookassa-payment', {
         body: { orderId, amount, returnUrl },
       });
@@ -85,15 +87,12 @@ export const apiClient = {
         return data.confirmation_url;
       }
     } catch (err) {
-      console.warn('Edge Function not found, using contract link fallback');
+      console.warn('Edge Function failure, using fallback link');
     }
 
-    // Резервный способ (Fallback): Прямая форма оплаты через контракт ЮKassa
-    // ВАЖНО: Сумма для ЮKassa должна быть строкой с 2 знаками после запятой
-    const formattedSum = amount.toFixed(2);
-    
-    // Используем домен yookassa.ru (для Merchant Shop ID), yoomoney.ru часто дает 404 для новых магазинов
-    return `https://yookassa.ru/checkout/payments/v2/contract?shopId=${SHOP_ID}&sum=${formattedSum}&customerNumber=${orderId}&shopSuccessURL=${encodeURIComponent(returnUrl)}`;
+    // 2. Резервный способ: Используем домен yoomoney.ru, который является стандартом для ссылок без API.
+    // Это позволит избежать ошибки 404, которая часто возникает на новом домене yookassa.ru.
+    return `https://yoomoney.ru/checkout/payments/v2/contract?shopId=${SHOP_ID}&sum=${formattedSum}&customerNumber=${orderId}&shopSuccessURL=${encodeURIComponent(returnUrl)}`;
   },
 
   async getMyOrders(userId: string) {
