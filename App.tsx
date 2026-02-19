@@ -1,16 +1,16 @@
 
 import React from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
-import { CartProvider } from './context/CartContext';
-import { Layout } from './components/Layout';
-import { Home } from './pages/Home';
-import { Cart } from './pages/Cart';
-import { Profile } from './pages/Profile';
-import { Admin } from './pages/Admin';
-import { Delivery } from './pages/Delivery';
-import { Contacts } from './pages/Contacts';
-import { OrderSuccess } from './pages/OrderSuccess';
+import { AuthProvider } from './context/AuthContext.tsx';
+import { CartProvider } from './context/CartContext.tsx';
+import { Layout } from './components/Layout.tsx';
+import { Home } from './pages/Home.tsx';
+import { Cart } from './pages/Cart.tsx';
+import { Profile } from './pages/Profile.tsx';
+import { Admin } from './pages/Admin.tsx';
+import { Delivery } from './pages/Delivery.tsx';
+import { Contacts } from './pages/Contacts.tsx';
+import { OrderSuccess } from './pages/OrderSuccess.tsx';
 
 const App: React.FC = () => {
   return (
