@@ -65,8 +65,8 @@ export const apiClient = {
 
   /**
    * Получение ссылки на оплату.
-   * Если Edge Function не развернута, используется прямой редирект.
-   * Используем yoomoney.ru как более надежный домен для "контрактных" ссылок (он автоматически перенаправит в ЮKassa).
+   * Ошибка "Платеж не прошел" на стороне ЮKassa часто означает, что ShopID не настроен на прием платежей по прямой ссылке
+   * или параметры не соответствуют ожидаемым. Используем наиболее совместимый формат.
    */
   async getPaymentLink(orderId: string, amount: number) {
     const SHOP_ID = '1271098';
@@ -78,7 +78,7 @@ export const apiClient = {
     const returnUrl = `${cleanBase}#/order-success?orderId=${orderId}`;
     
     try {
-      // 1. Попытка через Edge Function (если она есть)
+      // 1. Пытаемся вызвать Edge Function. Это САМЫЙ надежный метод, т.к. использует API ключи.
       const { data, error } = await supabase.functions.invoke('yookassa-payment', {
         body: { orderId, amount, returnUrl },
       });
@@ -87,12 +87,14 @@ export const apiClient = {
         return data.confirmation_url;
       }
     } catch (err) {
-      console.warn('Edge Function failure, using fallback link');
+      console.warn('Edge Function failure, using contract link fallback');
     }
 
-    // 2. Резервный способ: Используем домен yoomoney.ru, который является стандартом для ссылок без API.
-    // Это позволит избежать ошибки 404, которая часто возникает на новом домене yookassa.ru.
-    return `https://yoomoney.ru/checkout/payments/v2/contract?shopId=${SHOP_ID}&sum=${formattedSum}&customerNumber=${orderId}&shopSuccessURL=${encodeURIComponent(returnUrl)}`;
+    // 2. Резервный способ (Контракт):
+    // ВАЖНО: Сумма должна быть передана через параметр 'sum'. 
+    // Если ЮKassa все равно пишет "Платеж не прошел", проверьте в личном кабинете ЮKassa, 
+    // включена ли возможность оплаты по готовым ссылкам (HTTP-протокол).
+    return `https://yookassa.ru/checkout/payments/v2/contract?shopId=${SHOP_ID}&sum=${formattedSum}&customerNumber=${orderId}&shopSuccessURL=${encodeURIComponent(returnUrl)}`;
   },
 
   async getMyOrders(userId: string) {
