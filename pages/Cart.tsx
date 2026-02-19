@@ -58,26 +58,18 @@ export const Cart: React.FC = () => {
 
       // 2. Логика оплаты
       if (paymentMethod === 'online') {
-        const confirmationUrl = await apiClient.getPaymentLink(
-          order.id, 
-          total, 
-          `Заказ №${order.id} в Чайхана Жулебино`
-        );
+        const confirmationUrl = await apiClient.getPaymentLink(order.id, total);
         
-        // Очищаем корзину перед уходом на страницу оплаты
-        clearCart();
-        
-        // Редирект на ЮKassa (через Edge Function илиFallback)
+        // Редирект на ЮKassa (корзину очистит страница Success)
         window.location.href = confirmationUrl;
         return; 
       } else {
-        alert('Заказ успешно оформлен! Мы перезвоним вам в течение 5 минут.');
-        clearCart();
-        navigate('/profile');
+        // Для оплаты наличными сразу очищаем и ведем на успех
+        navigate(`/order-success?orderId=${order.id}`);
       }
     } catch (err: any) {
       console.error('Order Submission Error:', err);
-      setErrorMessage(err.message || 'Ошибка при оформлении заказа. Попробуйте еще раз или свяжитесь с нами.');
+      setErrorMessage(err.message || 'Ошибка при оформлении заказа. Попробуйте еще раз.');
       setIsSubmitting(false);
     }
   };

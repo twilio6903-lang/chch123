@@ -65,30 +65,30 @@ export const apiClient = {
 
   /**
    * Получение ссылки на оплату.
-   * Если Edge Function не развернута, используется прямой редирект на форму платежа.
+   * Исправлен формат для Simple Integration ЮKassa.
    */
-  async getPaymentLink(orderId: string, amount: number, description: string) {
+  async getPaymentLink(orderId: string, amount: number) {
     const SHOP_ID = '1271098';
+    // URL вашего сайта (автоматически определяется)
+    const baseUrl = window.location.origin + window.location.pathname;
+    const returnUrl = `${baseUrl}#/order-success?orderId=${orderId}`;
     
     try {
-      // 1. Пытаемся вызвать Edge Function (лучший способ)
+      // Пытаемся вызвать Edge Function
       const { data, error } = await supabase.functions.invoke('yookassa-payment', {
-        body: { orderId, amount, description },
+        body: { orderId, amount, returnUrl },
       });
 
       if (!error && data?.confirmation_url) {
         return data.confirmation_url;
       }
-      
-      console.warn('Edge Function yookassa-payment not found or failed. Falling back to direct link.');
     } catch (err) {
-      console.warn('Network error while calling Edge Function. Falling back to direct link.');
+      console.warn('Edge Function fallback');
     }
 
-    // 2. Резервный способ (Fallback): Прямая ссылка на контракт ЮKassa
-    // customerNumber - это ID заказа, sum - сумма.
-    // Это позволит пользователю оплатить заказ даже без Edge Function.
-    return `https://yoomoney.ru/checkout/payments/v2/contract?shopId=${SHOP_ID}&sum=${amount}&customerNumber=${orderId}`;
+    // Резервный способ: Конструктор ссылки для Простой Оплаты
+    // Используем проверенный формат для shopId
+    return `https://yookassa.ru/integration/simple/checkout?shopId=${SHOP_ID}&sum=${amount}&customerNumber=${orderId}&shopSuccessURL=${encodeURIComponent(returnUrl)}`;
   },
 
   async getMyOrders(userId: string) {
