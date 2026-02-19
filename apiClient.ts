@@ -65,40 +65,64 @@ export const apiClient = {
 
   /**
    * Получение ссылки на оплату ЮKassa.
-   * Для ИП важно использовать shopId и передавать сумму в параметре 'sum'.
-   * 404 ошибка на этом URL обычно означает, что в ЛК ЮKassa не включен "HTTP-протокол" или "Платежи по ссылке".
+   * Ошибка 400 для ИП часто связана с отсутствием description или неверным форматом JSON.
+   * Ошибка 'Failed to fetch' означает, что Edge Function недоступна или блокируется.
    */
   async getPaymentLink(orderId: string, amount: number) {
     const SHOP_ID = '1271098';
     const formattedSum = amount.toFixed(2);
+    const description = `Оплата заказа №${orderId.slice(0, 8)} в Чайхана Жулебино`;
     
-    // Формируем чистый URL для возврата
     const base = window.location.origin + window.location.pathname;
     const cleanBase = base.endsWith('/') ? base : base + '/';
     const returnUrl = `${cleanBase}#/order-success?orderId=${orderId}`;
     
+    // Пытаемся вызвать Edge Function
     try {
-      // 1. Попытка через Edge Function (если настроены API ключи в Supabase)
-      const { data, error } = await supabase.functions.invoke('yookassa-payment', {
-        body: { orderId, amount, returnUrl },
+      const response = await supabase.functions.invoke('yookassa-payment', {
+        body: { 
+          orderId, 
+          amount: {
+            value: formattedSum,
+            currency: 'RUB'
+          },
+          description: description,
+          capture: true,
+          confirmation: {
+            type: 'redirect',
+            return_url: returnUrl
+          },
+          metadata: {
+            order_id: orderId
+          }
+        },
       });
 
-      if (!error && data?.confirmation_url) {
-        return data.confirmation_url;
+      // В случае успеха Edge Function возвращает объект с confirmation_url
+      if (response.data?.confirmation_url) {
+        return response.data.confirmation_url;
       }
-    } catch (err) {
-      console.warn('Edge Function failure, using simplified contract link');
-    }
 
-    // 2. Универсальная контрактная ссылка для ЮKassa (самый стабильный вариант для ИП)
-    const paymentUrl = new URL('https://yookassa.ru/checkout/payments/v2/contract');
-    paymentUrl.searchParams.append('shopId', SHOP_ID);
-    paymentUrl.searchParams.append('sum', formattedSum);
-    paymentUrl.searchParams.append('customerNumber', orderId); // Идентификатор плательщика
-    paymentUrl.searchParams.append('orderNumber', orderId);    // Номер заказа
-    paymentUrl.searchParams.append('shopSuccessURL', returnUrl);
+      if (response.error) {
+        console.error('Edge Function Error Response:', response.error);
+        // Если функция вернула ошибку (например 400), выбрасываем её для перехода в catch
+        throw response.error;
+      }
+    } catch (err: any) {
+      console.warn('Edge Function unreachable or failed, falling back to direct contract link:', err.message || err);
+      
+      // РЕЗЕРВНЫЙ ВАРИАНТ: Прямая контрактная ссылка, если Edge Function не работает ('Failed to fetch')
+      // Для ИП Садыкова М.М. этот метод может требовать настройки "Платежи по ссылке" в ЛК ЮKassa
+      const fallbackUrl = new URL('https://yookassa.ru/checkout/payments/v2/contract');
+      fallbackUrl.searchParams.append('shopId', SHOP_ID);
+      fallbackUrl.searchParams.append('sum', formattedSum);
+      fallbackUrl.searchParams.append('customerNumber', orderId);
+      fallbackUrl.searchParams.append('shopSuccessURL', returnUrl);
+      
+      return fallbackUrl.toString();
+    }
     
-    return paymentUrl.toString();
+    throw new Error('Не удалось сформировать ссылку на оплату');
   },
 
   async getMyOrders(userId: string) {
