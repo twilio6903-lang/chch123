@@ -64,21 +64,21 @@ export const apiClient = {
   },
 
   /**
-   * Получение ссылки на оплату.
-   * Ошибка "Платеж не прошел" на стороне ЮKassa часто означает, что ShopID не настроен на прием платежей по прямой ссылке
-   * или параметры не соответствуют ожидаемым. Используем наиболее совместимый формат.
+   * Получение ссылки на оплату ЮKassa.
+   * Для ИП важно использовать shopId и передавать сумму в параметре 'sum'.
+   * 404 ошибка на этом URL обычно означает, что в ЛК ЮKassa не включен "HTTP-протокол" или "Платежи по ссылке".
    */
   async getPaymentLink(orderId: string, amount: number) {
     const SHOP_ID = '1271098';
     const formattedSum = amount.toFixed(2);
     
-    // Формируем чистый базовый URL для возврата
+    // Формируем чистый URL для возврата
     const base = window.location.origin + window.location.pathname;
     const cleanBase = base.endsWith('/') ? base : base + '/';
     const returnUrl = `${cleanBase}#/order-success?orderId=${orderId}`;
     
     try {
-      // 1. Пытаемся вызвать Edge Function. Это САМЫЙ надежный метод, т.к. использует API ключи.
+      // 1. Попытка через Edge Function (если настроены API ключи в Supabase)
       const { data, error } = await supabase.functions.invoke('yookassa-payment', {
         body: { orderId, amount, returnUrl },
       });
@@ -87,14 +87,18 @@ export const apiClient = {
         return data.confirmation_url;
       }
     } catch (err) {
-      console.warn('Edge Function failure, using contract link fallback');
+      console.warn('Edge Function failure, using simplified contract link');
     }
 
-    // 2. Резервный способ (Контракт):
-    // ВАЖНО: Сумма должна быть передана через параметр 'sum'. 
-    // Если ЮKassa все равно пишет "Платеж не прошел", проверьте в личном кабинете ЮKassa, 
-    // включена ли возможность оплаты по готовым ссылкам (HTTP-протокол).
-    return `https://yookassa.ru/checkout/payments/v2/contract?shopId=${SHOP_ID}&sum=${formattedSum}&customerNumber=${orderId}&shopSuccessURL=${encodeURIComponent(returnUrl)}`;
+    // 2. Универсальная контрактная ссылка для ЮKassa (самый стабильный вариант для ИП)
+    const paymentUrl = new URL('https://yookassa.ru/checkout/payments/v2/contract');
+    paymentUrl.searchParams.append('shopId', SHOP_ID);
+    paymentUrl.searchParams.append('sum', formattedSum);
+    paymentUrl.searchParams.append('customerNumber', orderId); // Идентификатор плательщика
+    paymentUrl.searchParams.append('orderNumber', orderId);    // Номер заказа
+    paymentUrl.searchParams.append('shopSuccessURL', returnUrl);
+    
+    return paymentUrl.toString();
   },
 
   async getMyOrders(userId: string) {
