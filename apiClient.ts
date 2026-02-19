@@ -65,16 +65,18 @@ export const apiClient = {
 
   /**
    * Получение ссылки на оплату.
-   * Исправлен формат для Simple Integration ЮKassa.
+   * Исправлен домен на yookassa.ru и добавлено форматирование параметров для предотвращения 404.
    */
   async getPaymentLink(orderId: string, amount: number) {
     const SHOP_ID = '1271098';
-    // URL вашего сайта (автоматически определяется)
-    const baseUrl = window.location.origin + window.location.pathname;
-    const returnUrl = `${baseUrl}#/order-success?orderId=${orderId}`;
+    
+    // Формируем чистый базовый URL для возврата
+    const base = window.location.origin + window.location.pathname;
+    const cleanBase = base.endsWith('/') ? base : base + '/';
+    const returnUrl = `${cleanBase}#/order-success?orderId=${orderId}`;
     
     try {
-      // Пытаемся вызвать Edge Function
+      // Пытаемся вызвать Edge Function (рекомендуемый способ)
       const { data, error } = await supabase.functions.invoke('yookassa-payment', {
         body: { orderId, amount, returnUrl },
       });
@@ -83,12 +85,15 @@ export const apiClient = {
         return data.confirmation_url;
       }
     } catch (err) {
-      console.warn('Edge Function fallback');
+      console.warn('Edge Function not found, using contract link fallback');
     }
 
-    // Резервный способ: Конструктор ссылки для Простой Оплаты
-    // Используем проверенный формат для shopId
-    return `https://yookassa.ru/integration/simple/checkout?shopId=${SHOP_ID}&sum=${amount}&customerNumber=${orderId}&shopSuccessURL=${encodeURIComponent(returnUrl)}`;
+    // Резервный способ (Fallback): Прямая форма оплаты через контракт ЮKassa
+    // ВАЖНО: Сумма для ЮKassa должна быть строкой с 2 знаками после запятой
+    const formattedSum = amount.toFixed(2);
+    
+    // Используем домен yookassa.ru (для Merchant Shop ID), yoomoney.ru часто дает 404 для новых магазинов
+    return `https://yookassa.ru/checkout/payments/v2/contract?shopId=${SHOP_ID}&sum=${formattedSum}&customerNumber=${orderId}&shopSuccessURL=${encodeURIComponent(returnUrl)}`;
   },
 
   async getMyOrders(userId: string) {
